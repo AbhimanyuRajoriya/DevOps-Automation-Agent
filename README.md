@@ -14,7 +14,7 @@ Automates CI/CD issue detection and fix suggestion using AI agents.
 Webhook → Parser → AI Agent → Validator → Action
 
 ## 📂 Files
-- workflow.json → import into n8n
+- Devops Automation Agent.json → import into n8n
 
 ## 🛠 Setup
 1. Import workflow.json into n8n
