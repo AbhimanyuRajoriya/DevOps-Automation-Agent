@@ -17,7 +17,7 @@ Webhook → Parser → AI Agent → Validator → Action
 - Devops Automation Agent.json → import into n8n
 
 ## 🛠 Setup
-1. Import workflow.json into n8n
+1. Import json file into n8n
 2. Add credentials (GitHub, Gemini)
 3. Trigger via webhook
 
