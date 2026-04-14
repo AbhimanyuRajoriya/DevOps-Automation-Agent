@@ -1,0 +1,444 @@
+{
+  "name": "DevOps Automation Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "url": "=https://api.github.com/repos/{{$json.repo}}/actions/runs/{{$json.run_id}}/jobs",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "githubApi",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        400,
+        -112
+      ],
+      "id": "c3f......",
+      "name": "HTTP Request",
+      "credentials": {
+        "githubApi": {
+          "id": "0C......",
+          "name": "GitHub account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const jobs = $json.jobs || [];\n\nlet failedJob = null;\nlet failedStep = null;\n\nfor (const job of jobs) {\n  if (job.conclusion === 'failure') {\n    failedJob = job.name;\n    const step = (job.steps || []).find(s => s.conclusion === 'failure');\n    failedStep = step ? step.name : null;\n    break;\n  }\n}\n\nreturn [\n  {\n    json: {\n      ...$input.first().json,\n      failed_job: failedJob,\n      failed_step: failedStep\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        560,
+        -208
+      ],
+      "id": "92.......",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.github.com/repos/{{ $('Repo details').item.json.repo }}/actions/runs/{{ $('Repo details').item.json.run_id }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        720,
+        -112
+      ],
+      "id": "d3d.......",
+      "name": "HTTP Request1"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a CI failure analyzer.\n\nYou MUST extract meaningful information from the input.\nEmpty fields are NOT allowed unless absolutely impossible.\n\nSTRICT RULES:\n- Output ONLY valid JSON\n- No markdown, no ```json\n- Do NOT return empty strings unless data truly doesn't exist\n- If unsure, make a BEST GUESS based on error patterns\n- Never return the template unchanged\n- \"issue\", \"root_cause\", and \"final_message\" MUST be filled\n\nANALYZE THE FAILURE AND RETURN:\n\n{\n  \"issue\": \"<short one-line issue summary>\",\n  \"severity\": \"low|medium|high\",\n  \"root_cause\": \"<specific technical reason>\",\n  \"confidence\": \"low|medium|high\",\n  \"fix\": \"<clear actionable fix>\",\n  \"steps\": [\"<step1>\", \"<step2>\", \"<step3>\"],\n  \"risk\": \"low|medium|high\",\n  \"valid\": true,\n  \"safe_to_execute\": true|false,\n  \"validation_reason\": \"<why safe or not>\",\n  \"action\": \"suggest_fix|alert|ignore\",\n  \"final_message\": \"<clear human-readable summary>\"\n}\n\nIMPORTANT:\n- If error mentions missing package → suggest install fix\n- If error mentions module not found → fix import/dependency\n- If error mentions syntax → suggest code correction\n- If logs are unclear → still infer most likely cause\n\nINPUT DATA:\nRepository: {{ $('Repo details').item.json.repo }}\nWorkflow: {{ $('Repo details').item.json.workflow_name }}\nRun URL: {{ $('Repo details').item.json.run_url }}\nBranch: {{$json.head_branch}}\nCommit: {{$json.head_sha}}\nFailed job: {{ $('Code in JavaScript').item.json.failed_job }}\nFailed step: {{ $('Code in JavaScript').item.json.failed_step }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        928,
+        -112
+      ],
+      "id": "6..............",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $json.output;\n\nif (!raw || typeof raw !== \"string\") {\n  throw new Error(\"AI output is empty or not a string\");\n}\n\nlet cleaned = raw.trim()\n  .replace(/^```json\\s*/i, \"\")\n  .replace(/^```\\s*/i, \"\")\n  .replace(/\\s*```$/, \"\")\n  .trim();\n\nlet parsed;\n\ntry {\n  parsed = JSON.parse(cleaned);\n} catch (error) {\n  throw new Error(\"AI output is not valid JSON after cleaning:\\n\" + cleaned);\n}\n\nreturn [{ json: parsed }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1232,
+        0
+      ],
+      "id": "7f.......f",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a CI fix generator.\n\nYou receive a validated CI issue analysis.\nReturn ONLY valid JSON.\nDo not write markdown.\nDo not wrap output in code fences.\nDo not add extra explanation.\n\nReturn exactly this structure:\n{\n  \"target_file\": \"\",\n  \"change_type\": \"replace_line|append_line|rewrite_block\",\n  \"original\": \"\",\n  \"replacement\": \"\",\n  \"commit_message\": \"\",\n  \"pr_title\": \"\",\n  \"pr_body\": \"\"\n}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1520,
+        -112
+      ],
+      "id": "28.......",
+      "name": "AI Agent1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $json.output;\n\nif (!raw) {\n  throw new Error(\"No output field found from Fix Generator\");\n}\n\nlet parsed;\n\ntry {\n  parsed = JSON.parse(raw);\n} catch (error) {\n  throw new Error(\"Fix Generator output is not valid JSON: \" + raw);\n}\n\nreturn [\n  {\n    json: parsed\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1888,
+        -112
+      ],
+      "id": "2e.......",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-5-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1520,
+        16
+      ],
+      "id": "15.......",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "iK.......",
+          "name": "n8n free OpenAI API credits"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-5-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        928,
+        32
+      ],
+      "id": "e4.......",
+      "name": "OpenAI Chat Model1",
+      "credentials": {
+        "openAiApi": {
+          "id": "iK.......",
+          "name": "n8n free OpenAI API credits"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "git-ci",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        -112
+      ],
+      "id": "a.......37",
+      "name": "Webhook",
+      "webhookId": "3.......96"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C0AS9EDD4TG",
+          "mode": "list",
+          "cachedResultName": "suggested-fix"
+        },
+        "text": "=🚨 CI FAILURE DETECTED\n\nRepo: {{ $('Repo details').item.json.repo }}\nBranch: {{ $('Repo details').item.json.head_branch }}\nWorkflow: {{ $('Repo details').item.json.workflow_name }}\n\n⚠️Issue: {{ $('Code in JavaScript1').item.json.issue }}\n\n🚩Root Cause: {{ $('Code in JavaScript1').item.json.root_cause }}\n\n💡Suggested Fix: {{ $('Code in JavaScript1').item.json.fix }}\n\n🪜Steps:\n{{ $('Code in JavaScript1').item.json.steps }}\n\nRisk: {{ $('Code in JavaScript1').item.json.risk }}\n\nRun URL: {{ $('Repo details').item.json.run_url }}",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        2128,
+        -112
+      ],
+      "id": "19.......",
+      "name": "Suggest AI Fix",
+      "webhookId": "d.......",
+      "notesInFlow": true,
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "nI.......",
+          "name": "Slack OAuth2 API"
+        }
+      },
+      "notes": "AI Suggested Fix in a\ndifferent channel"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C0AS8451X9T",
+          "mode": "list",
+          "cachedResultName": "dev-team-issue-fix"
+        },
+        "text": "=🚨 CI FAILURE DETECTED\n\nRepo: {{ $('Repo details').item.json.repo }}\nBranch: {{ $('Repo details').item.json.head_branch }}\nWorkflow: {{ $('Repo details').item.json.workflow_name }}\n\n⚠️Issue: {{ $('Code in JavaScript1').item.json.issue }}\n\n🚩Root Cause: {{ $('Code in JavaScript1').item.json.root_cause }}\n\nRisk: {{ $('Code in JavaScript1').item.json.risk }}\n\nRun URL: {{ $('Repo details').item.json.run_url }}",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        1888,
+        176
+      ],
+      "id": "f5.......",
+      "name": "Report issues to dev Team",
+      "webhookId": "04.......b",
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "n.......",
+          "name": "Slack OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "9d9cb71e-fa88-4bb7-91f3-4e82d38a62f9",
+              "name": "repo",
+              "value": "={{ $json.body.repository.full_name }}",
+              "type": "string"
+            },
+            {
+              "id": "2734c9c6-7f38-49df-a832-a3d6f0231809",
+              "name": "repo_owner",
+              "value": "={{ $json.body.repository.owner.login }}",
+              "type": "string"
+            },
+            {
+              "id": "6bc124f8-6c6d-4a12-9404-6d85c97545c2",
+              "name": "repo_name",
+              "value": "={{ $json.body.repository.name }}",
+              "type": "string"
+            },
+            {
+              "id": "583cd11f-1e83-4eb5-94c0-2ed45976d2f9",
+              "name": "run_id",
+              "value": "={{ $json.body.workflow_run.id }}",
+              "type": "number"
+            },
+            {
+              "id": "fa6f23fd-8f85-4500-bb8e-d7e55d8bc466",
+              "name": "head_branch",
+              "value": "={{ $json.body.workflow_run.head_branch }}",
+              "type": "string"
+            },
+            {
+              "id": "acdb8ee7-50ef-4d50-a94c-8bb4e93fe332",
+              "name": "head_sha",
+              "value": "={{ $json.body.workflow_run.head_sha }}",
+              "type": "string"
+            },
+            {
+              "id": "97c86b2f-bd6b-4541-af0b-cdddd4d563df",
+              "name": "workflow_name",
+              "value": "={{ $json.body.workflow_run.name }}",
+              "type": "string"
+            },
+            {
+              "id": "3fe57f9e-f9e6-4215-9dbb-cbef2372ca03",
+              "name": "run_url",
+              "value": "={{ $json.body.workflow_run.html_url }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        208,
+        -208
+      ],
+      "id": "c92.......4dc",
+      "name": "Repo details"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request1": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Report issues to dev Team",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript2": {
+      "main": [
+        [
+          {
+            "node": "Suggest AI Fix",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Repo details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Repo details": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "43.......3d",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "79.......8b31"
+  },
+  "id": "N.......q",
+  "tags": []
+}
